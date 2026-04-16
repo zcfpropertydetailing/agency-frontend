@@ -68,7 +68,7 @@ export default function AgentChat({ agent, token, client }) {
         if (jsonMatch) {
           try {
             const deployData = JSON.parse(jsonMatch[1]);
-            const deployRes = await fetch(`${API}/api/webflow/create-site`, {
+            const deployRes = await fetch(`${API}/api/deploy/website`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
