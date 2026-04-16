@@ -59,7 +59,35 @@ export default function AgentChat({ agent, token, client }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      
+      let reply = data.reply;
+      
+      // Check for deploy signal and trigger Webflow site creation
+      if (agent.id === 'website' && reply.includes('DEPLOY_READY:')) {
+        const jsonMatch = reply.match(/DEPLOY_READY:\s*({[\s\S]*?})/);
+        if (jsonMatch) {
+          try {
+            const deployData = JSON.parse(jsonMatch[1]);
+            const deployRes = await fetch(`${API}/api/webflow/create-site`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ deployData })
+            });
+            const deployResult = await deployRes.json();
+            if (deployResult.success) {
+              reply = reply.replace(/DEPLOY_READY:[\s\S]*$/, '') + 
+                `\n\n✅ Your website is live! View it here: ${deployResult.site.siteUrl}\n\nI'll keep monitoring and improving it automatically. You can ask me to make any changes at any time.`;
+            }
+          } catch (deployErr) {
+            console.error('Deploy error:', deployErr);
+          }
+        }
+      }
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
     } catch (e) {
       setMessages(prev => [...prev, {
         role: 'assistant',
