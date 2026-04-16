@@ -11,6 +11,7 @@ export default function AgentChat({ agent, token, client }) {
 
   useEffect(() => {
     loadHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent.id]);
 
   useEffect(() => {

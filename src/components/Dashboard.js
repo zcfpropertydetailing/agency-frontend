@@ -27,6 +27,7 @@ export default function Dashboard({ session, client, onLogout }) {
 
   useEffect(() => {
     if (token) fetchMetrics();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   const fetchMetrics = async () => {
