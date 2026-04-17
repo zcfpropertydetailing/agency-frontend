@@ -38,8 +38,8 @@ export default function AgentChat({ agent, token, client }) {
   const analyzeCollectedInfo = () => {
     const collected = {};
 
-    // Only analyze conversation text — do not pre-fill from profile
-    const conversationText = messages.map(m => m.content.toLowerCase()).join(' ');
+    // Only analyze USER messages — not agent messages
+    const conversationText = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase()).join(' ');
 
     REQUIRED_FIELDS.forEach(field => {
       if (collected[field.key]) return;
