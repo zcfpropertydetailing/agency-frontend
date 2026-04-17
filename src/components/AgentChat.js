@@ -79,7 +79,7 @@ export default function AgentChat({ agent, token, client }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').trim();
+      const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').replace(/\[STATUS:\{[^}]+\}\]/g, '').trim();
       setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
       // Update checklist from server response
       if (data.collected) setCollectedFields(data.collected);
@@ -113,7 +113,7 @@ export default function AgentChat({ agent, token, client }) {
       });
       const data = await res.json();
       if (data.reply) {
-        const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').trim();
+        const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').replace(/\[STATUS:\{[^}]+\}\]/g, '').trim();
         setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
         if (agent.id === 'website') fetchCollected();
       }
