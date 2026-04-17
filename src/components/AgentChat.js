@@ -79,9 +79,10 @@ export default function AgentChat({ agent, token, client }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      // Strip hidden collection tags before displaying
       const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').trim();
       setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
+      // Update checklist from server response
+      if (data.collected) setCollectedFields(data.collected);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'I ran into an issue. Please try again in a moment.' }]);
     }
@@ -258,12 +259,26 @@ export default function AgentChat({ agent, token, client }) {
 
       <div className="chat-container">
         <div className="chat-messages">
-          {messages.map((msg, i) => (
-            <div key={i} className={`message ${msg.role}`}>
-              <div className="message-avatar">{msg.role === 'assistant' ? agent.icon : '👤'}</div>
-              <div className="message-content">{msg.content}</div>
-            </div>
-          ))}
+          {messages.map((msg, i) => {
+            // Extract SVG from message content
+            const svgMatch = msg.content.match(/<svg[\s\S]*?<\/svg>/i);
+            const cleanContent = msg.content.replace(/<svg[\s\S]*?<\/svg>/gi, '').replace(/```svg[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim();
+            
+            return (
+              <div key={i} className={`message ${msg.role}`}>
+                <div className="message-avatar">{msg.role === 'assistant' ? agent.icon : '👤'}</div>
+                <div className="message-content">
+                  {cleanContent}
+                  {svgMatch && (
+                    <div style={{marginTop:'12px',background:'#fff',borderRadius:'8px',padding:'16px',display:'inline-block'}}>
+                      <div dangerouslySetInnerHTML={{__html: svgMatch[0]}} style={{maxWidth:'200px',maxHeight:'200px'}} />
+                      <div style={{fontSize:'12px',color:'#888',marginTop:'8px',textAlign:'center'}}>Your logo preview</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {loading && (
             <div className="message assistant">
               <div className="message-avatar">{agent.icon}</div>
