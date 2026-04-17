@@ -117,7 +117,7 @@ export default function AgentChat({ agent, token, client }) {
         if (agent.id === 'website') fetchCollected();
       }
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Files received! I'll incorporate them into your website.' }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Files received! I'll incorporate them into your website." }]);
     }
     setLoading(false);
   };
