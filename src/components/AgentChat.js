@@ -31,21 +31,18 @@ export default function AgentChat({ agent, token, client }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    if (agent.id === 'website') analyzeCollectedInfo();
+    if (agent.id === 'website' && messages.length > 1) fetchCollected();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  const analyzeCollectedInfo = () => {
-    const collected = {};
-
-    // Parse [COLLECTED:fieldName] tags from assistant messages
-    const assistantMessages = messages.filter(m => m.role === 'assistant').map(m => m.content).join(' ');
-    const tagMatches = assistantMessages.matchAll(/\[COLLECTED:(\w+)\]/g);
-    for (const match of tagMatches) {
-      collected[match[1]] = true;
-    }
-
-    setCollectedFields(collected);
+  const fetchCollected = async () => {
+    try {
+      const res = await fetch(`${API}/api/agents/collected/website`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.collected) setCollectedFields(data.collected);
+    } catch (e) {}
   };
 
   const loadHistory = async () => {
@@ -87,6 +84,40 @@ export default function AgentChat({ agent, token, client }) {
       setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'I ran into an issue. Please try again in a moment.' }]);
+    }
+    setLoading(false);
+  };
+
+  const handleFileUpload = async (files) => {
+    if (!files || files.length === 0) return;
+    const fileList = Array.from(files);
+    const names = fileList.map(f => f.name).join(', ');
+    
+    // Notify user files are received
+    setMessages(prev => [...prev, {
+      role: 'user',
+      content: `[Uploaded ${fileList.length} file(s): ${names}]`
+    }]);
+    setLoading(true);
+
+    try {
+      // Send file notification to agent
+      const res = await fetch(`${API}/api/agents/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          agentType: agent.id,
+          message: `I've uploaded ${fileList.length} file(s): ${names}. Please acknowledge and tell me how these will be used on my website.`
+        })
+      });
+      const data = await res.json();
+      if (data.reply) {
+        const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').trim();
+        setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
+        if (agent.id === 'website') fetchCollected();
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Files received! I'll incorporate them into your website.' }]);
     }
     setLoading(false);
   };
@@ -248,6 +279,11 @@ export default function AgentChat({ agent, token, client }) {
           <div ref={bottomRef} />
         </div>
         <div className="chat-input-area">
+          <label style={{cursor:'pointer',padding:'8px',color:'rgba(255,255,255,0.5)',fontSize:'20px',flexShrink:0,display:'flex',alignItems:'center'}} title="Upload files (images, PDFs)">
+            📎
+            <input type="file" multiple accept="image/*,.pdf" style={{display:'none'}}
+              onChange={e => handleFileUpload(e.target.files)} />
+          </label>
           <input className="chat-input" placeholder={`Message your ${agent.name.toLowerCase()}...`}
             value={input} onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()} />
