@@ -38,15 +38,12 @@ export default function AgentChat({ agent, token, client }) {
   const analyzeCollectedInfo = () => {
     const collected = {};
 
-    // Only analyze USER messages — not agent messages
-    const conversationText = messages.filter(m => m.role === 'user').map(m => m.content.toLowerCase()).join(' ');
-
-    REQUIRED_FIELDS.forEach(field => {
-      if (collected[field.key]) return;
-      if (field.keywords.some(kw => conversationText.includes(kw.toLowerCase()))) {
-        collected[field.key] = true;
-      }
-    });
+    // Parse [COLLECTED:fieldName] tags from assistant messages
+    const assistantMessages = messages.filter(m => m.role === 'assistant').map(m => m.content).join(' ');
+    const tagMatches = assistantMessages.matchAll(/\[COLLECTED:(\w+)\]/g);
+    for (const match of tagMatches) {
+      collected[match[1]] = true;
+    }
 
     setCollectedFields(collected);
   };
@@ -85,7 +82,9 @@ export default function AgentChat({ agent, token, client }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
+      // Strip hidden collection tags before displaying
+      const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').trim();
+      setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', content: 'I ran into an issue. Please try again in a moment.' }]);
     }
