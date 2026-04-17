@@ -7,6 +7,8 @@ export default function AgentChat({ agent, token, client }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [deploying, setDeploying] = useState(false);
+  const [siteUrl, setSiteUrl] = useState(null);
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -104,9 +106,6 @@ export default function AgentChat({ agent, token, client }) {
       </div>
     </div>
   );
-
-  const [deploying, setDeploying] = useState(false);
-  const [siteUrl, setSiteUrl] = useState(null);
 
   const buildWebsite = async () => {
     setDeploying(true);
