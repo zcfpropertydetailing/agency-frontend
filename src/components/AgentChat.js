@@ -105,6 +105,54 @@ export default function AgentChat({ agent, token, client }) {
     </div>
   );
 
+  const [deploying, setDeploying] = useState(false);
+  const [siteUrl, setSiteUrl] = useState(null);
+
+  const buildWebsite = async () => {
+    setDeploying(true);
+    try {
+      // Extract all info from conversation history
+      const conversationText = messages.map(m => m.role + ': ' + m.content).join('\n');
+      
+      const res = await fetch(`${API}/api/deploy/website`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          deployData: {
+            businessName: client?.business_name || 'My Business',
+            industry: client?.industry || 'HVAC',
+            location: client?.location || 'Wayne, PA',
+            phone: client?.phone || '(000) 000-0000',
+            email: client?.email || '',
+            services: [],
+            areas: [client?.location || 'Wayne, PA'],
+            colors: { primary: '#1a1a18', accent: '#e8a020' },
+            conversationContext: conversationText
+          }
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSiteUrl(data.siteUrl);
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: 'Your website is now live! View it here: ' + data.siteUrl + '\n\nI will continue monitoring and improving it automatically. Let me know any changes you want!'
+        }]);
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'There was an issue deploying your site. Please try again or contact support.'
+      }]);
+    }
+    setDeploying(false);
+  };
+
   return (
     <div className="agent-page">
       <div className="agent-header">
@@ -117,7 +165,40 @@ export default function AgentChat({ agent, token, client }) {
           <div className="status-dot"></div>
           Active
         </div>
+        {agent.id === 'website' && (
+          <button
+            onClick={buildWebsite}
+            disabled={deploying}
+            style={{
+              marginLeft: '12px',
+              background: deploying ? '#444' : 'linear-gradient(135deg, #10b981, #059669)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '8px 16px',
+              fontSize: '13px',
+              fontWeight: '600',
+              cursor: deploying ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit'
+            }}
+          >
+            {deploying ? 'Building...' : siteUrl ? 'Rebuild Site' : 'Build My Site'}
+          </button>
+        )}
       </div>
+      {siteUrl && (
+        <div style={{
+          background: 'rgba(16,185,129,0.1)',
+          border: '1px solid rgba(16,185,129,0.3)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          fontSize: '14px',
+          color: '#10b981'
+        }}>
+          Your site is live: <a href={siteUrl} target="_blank" rel="noreferrer" style={{color:'#10b981',fontWeight:'600'}}>{siteUrl}</a>
+        </div>
+      )}
 
       <div className="chat-container">
         <div className="chat-messages">
