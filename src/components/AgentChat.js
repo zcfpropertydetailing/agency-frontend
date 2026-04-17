@@ -37,13 +37,8 @@ export default function AgentChat({ agent, token, client }) {
 
   const analyzeCollectedInfo = () => {
     const collected = {};
-    // Pre-fill from client profile
-    if (client?.business_name) collected.businessName = true;
-    if (client?.phone) collected.phone = true;
-    if (client?.industry) collected.industry = true;
-    if (client?.location) collected.location = true;
 
-    // Analyze conversation text for each required field
+    // Only analyze conversation text — do not pre-fill from profile
     const conversationText = messages.map(m => m.content.toLowerCase()).join(' ');
 
     REQUIRED_FIELDS.forEach(field => {
