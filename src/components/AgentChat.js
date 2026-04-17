@@ -2,6 +2,18 @@ import React, { useState, useEffect, useRef } from 'react';
 
 const API = process.env.REACT_APP_API_URL;
 
+const REQUIRED_FIELDS = [
+  { key: 'businessName', label: 'Business Name', keywords: ['business', 'company', 'name'] },
+  { key: 'phone', label: 'Phone Number', keywords: ['phone', 'call', 'number', '(', ')', '-'] },
+  { key: 'industry', label: 'Industry', keywords: [] },
+  { key: 'location', label: 'Location', keywords: ['located', 'based', 'serve', 'city'] },
+  { key: 'services', label: '3+ Services', keywords: ['service', 'offer', 'provide', 'install', 'repair'] },
+  { key: 'areas', label: '2+ Service Areas', keywords: ['area', 'serve', 'surrounding'] },
+  { key: 'yearsInBusiness', label: 'Years in Business', keywords: ['year', 'since', 'started', 'founded'] },
+  { key: 'licensed', label: 'Licensed & Insured', keywords: ['licensed', 'insured', 'license', 'insurance'] },
+  { key: 'hours', label: 'Business Hours', keywords: ['hour', 'open', 'available', 'monday', '24/7', 'daily'] }
+];
+
 export default function AgentChat({ agent, token, client }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -9,6 +21,7 @@ export default function AgentChat({ agent, token, client }) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [deploying, setDeploying] = useState(false);
   const [siteUrl, setSiteUrl] = useState(null);
+  const [collectedFields, setCollectedFields] = useState({});
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -18,7 +31,30 @@ export default function AgentChat({ agent, token, client }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (agent.id === 'website') analyzeCollectedInfo();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+
+  const analyzeCollectedInfo = () => {
+    const collected = {};
+    // Pre-fill from client profile
+    if (client?.business_name) collected.businessName = true;
+    if (client?.phone) collected.phone = true;
+    if (client?.industry) collected.industry = true;
+    if (client?.location) collected.location = true;
+
+    // Analyze conversation text for each required field
+    const conversationText = messages.map(m => m.content.toLowerCase()).join(' ');
+
+    REQUIRED_FIELDS.forEach(field => {
+      if (collected[field.key]) return;
+      if (field.keywords.some(kw => conversationText.includes(kw.toLowerCase()))) {
+        collected[field.key] = true;
+      }
+    });
+
+    setCollectedFields(collected);
+  };
 
   const loadHistory = async () => {
     setLoadingHistory(true);
@@ -30,10 +66,7 @@ export default function AgentChat({ agent, token, client }) {
       if (Array.isArray(data) && data.length > 0) {
         setMessages(data.map(m => ({ role: m.role, content: m.content })));
       } else {
-        setMessages([{
-          role: 'assistant',
-          content: getGreeting(agent.id, client)
-        }]);
+        setMessages([{ role: 'assistant', content: getGreeting(agent.id, client) }]);
       }
     } catch (e) {
       setMessages([{ role: 'assistant', content: getGreeting(agent.id, client) }]);
@@ -45,7 +78,6 @@ export default function AgentChat({ agent, token, client }) {
     const text = input.trim();
     if (!text || loading) return;
     setInput('');
-
     const userMsg = { role: 'user', content: text };
     setMessages(prev => [...prev, userMsg]);
     setLoading(true);
@@ -53,72 +85,25 @@ export default function AgentChat({ agent, token, client }) {
     try {
       const res = await fetch(`${API}/api/agents/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ agentType: agent.id, message: text })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      
-      let reply = data.reply;
-      
-      // Check for deploy signal and trigger Webflow site creation
-      if (agent.id === 'website' && reply.includes('DEPLOY_READY:')) {
-        const jsonMatch = reply.match(/DEPLOY_READY:\s*({[\s\S]*?})/);
-        if (jsonMatch) {
-          try {
-            const deployData = JSON.parse(jsonMatch[1]);
-            const deployRes = await fetch(`${API}/api/deploy/website`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ deployData })
-            });
-            const deployResult = await deployRes.json();
-            if (deployResult.success) {
-              reply = reply.replace(/DEPLOY_READY:[\s\S]*$/, '') + 
-                `\n\n✅ Your website is live! View it here: ${deployResult.site.siteUrl}\n\nI'll keep monitoring and improving it automatically. You can ask me to make any changes at any time.`;
-            }
-          } catch (deployErr) {
-            console.error('Deploy error:', deployErr);
-          }
-        }
-      }
-      
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }]);
     } catch (e) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'I ran into an issue. Please try again in a moment.'
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'I ran into an issue. Please try again in a moment.' }]);
     }
     setLoading(false);
   };
 
-  if (loadingHistory) return (
-    <div className="agent-page">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px' }}>
-        <div className="loader"></div>
-      </div>
-    </div>
-  );
-
   const buildWebsite = async () => {
     setDeploying(true);
     try {
-      // Extract all info from conversation history
       const conversationText = messages.map(m => m.role + ': ' + m.content).join('\n');
-      
       const res = await fetch(`${API}/api/deploy/website`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
           deployData: {
             businessName: client?.business_name || 'My Business',
@@ -126,8 +111,7 @@ export default function AgentChat({ agent, token, client }) {
             location: client?.location || 'Wayne, PA',
             phone: client?.phone || '(000) 000-0000',
             email: client?.email || '',
-            services: [],
-            areas: [client?.location || 'Wayne, PA'],
+            services: [], areas: [client?.location || 'Wayne, PA'],
             colors: { primary: '#1a1a18', accent: '#e8a020' },
             conversationContext: conversationText
           }
@@ -140,17 +124,25 @@ export default function AgentChat({ agent, token, client }) {
           role: 'assistant',
           content: 'Your website is now live! View it here: ' + data.siteUrl + '\n\nI will continue monitoring and improving it automatically. Let me know any changes you want!'
         }]);
-      } else {
-        throw new Error(data.error);
-      }
+      } else throw new Error(data.error);
     } catch (e) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'There was an issue deploying your site. Please try again or contact support.'
-      }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'There was an issue deploying your site. Please try again or contact support.' }]);
     }
     setDeploying(false);
   };
+
+  const requiredCount = REQUIRED_FIELDS.length;
+  const collectedCount = Object.keys(collectedFields).filter(k => collectedFields[k]).length;
+  const allCollected = collectedCount >= requiredCount;
+  const canBuild = agent.id === 'website' && allCollected;
+
+  if (loadingHistory) return (
+    <div className="agent-page">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px' }}>
+        <div className="loader"></div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="agent-page">
@@ -167,24 +159,64 @@ export default function AgentChat({ agent, token, client }) {
         {agent.id === 'website' && (
           <button
             onClick={buildWebsite}
-            disabled={deploying}
+            disabled={deploying || !canBuild}
+            title={!canBuild ? `${requiredCount - collectedCount} more items needed` : 'Ready to build!'}
             style={{
               marginLeft: '12px',
-              background: deploying ? '#444' : 'linear-gradient(135deg, #10b981, #059669)',
+              background: deploying || !canBuild ? '#444' : 'linear-gradient(135deg, #10b981, #059669)',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
               padding: '8px 16px',
               fontSize: '13px',
               fontWeight: '600',
-              cursor: deploying ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit'
+              cursor: deploying || !canBuild ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit',
+              opacity: !canBuild ? 0.5 : 1
             }}
           >
-            {deploying ? 'Building...' : siteUrl ? 'Rebuild Site' : 'Build My Site'}
+            {deploying ? 'Building...' : siteUrl ? 'Rebuild Site' : !canBuild ? `🔒 Build My Site (${collectedCount}/${requiredCount})` : 'Build My Site'}
           </button>
         )}
       </div>
+
+      {agent.id === 'website' && !siteUrl && (
+        <div style={{
+          background: 'rgba(255,255,255,0.02)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '10px',
+          padding: '14px 16px',
+          marginBottom: '16px',
+          fontSize: '13px'
+        }}>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
+            <div style={{fontWeight: 600, color: 'rgba(255,255,255,0.9)'}}>
+              {allCollected ? '✅ Ready to build your site!' : `📋 Information Needed (${collectedCount}/${requiredCount})`}
+            </div>
+            {allCollected && (
+              <div style={{fontSize: '12px', color: '#10b981'}}>You can build now or keep chatting</div>
+            )}
+          </div>
+          <div style={{display: 'flex', flexWrap: 'wrap', gap: '8px'}}>
+            {REQUIRED_FIELDS.map(field => (
+              <div key={field.key} style={{
+                fontSize: '12px',
+                padding: '4px 10px',
+                borderRadius: '20px',
+                background: collectedFields[field.key] ? 'rgba(16,185,129,0.15)' : 'rgba(255,255,255,0.05)',
+                color: collectedFields[field.key] ? '#10b981' : 'rgba(255,255,255,0.45)',
+                border: `1px solid ${collectedFields[field.key] ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                {collectedFields[field.key] ? '✓' : '○'} {field.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {siteUrl && (
         <div style={{
           background: 'rgba(16,185,129,0.1)',
@@ -203,9 +235,7 @@ export default function AgentChat({ agent, token, client }) {
         <div className="chat-messages">
           {messages.map((msg, i) => (
             <div key={i} className={`message ${msg.role}`}>
-              <div className="message-avatar">
-                {msg.role === 'assistant' ? agent.icon : '👤'}
-              </div>
+              <div className="message-avatar">{msg.role === 'assistant' ? agent.icon : '👤'}</div>
               <div className="message-content">{msg.content}</div>
             </div>
           ))}
@@ -223,18 +253,11 @@ export default function AgentChat({ agent, token, client }) {
           )}
           <div ref={bottomRef} />
         </div>
-
         <div className="chat-input-area">
-          <input
-            className="chat-input"
-            placeholder={`Message your ${agent.name.toLowerCase()}...`}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          />
-          <button className="send-btn" onClick={sendMessage} disabled={loading || !input.trim()}>
-            Send
-          </button>
+          <input className="chat-input" placeholder={`Message your ${agent.name.toLowerCase()}...`}
+            value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()} />
+          <button className="send-btn" onClick={sendMessage} disabled={loading || !input.trim()}>Send</button>
         </div>
       </div>
     </div>
@@ -244,10 +267,10 @@ export default function AgentChat({ agent, token, client }) {
 function getGreeting(agentId, client) {
   const name = client?.business_name?.split(' ')[0] || 'there';
   const greetings = {
-    website: `Hi! I'm your dedicated website agent. I'm here to build and manage a world-class website for ${client?.business_name || 'your business'} that genuinely represents your brand and converts visitors into customers.\n\nI'll take care of everything — design, content, SEO, and ongoing updates. You can ask me to change anything at any time and I'll handle it immediately.\n\nLet's start building something great. What's the exact name of your business as you'd like it to appear on your website?`,
+    website: `Hi! I'm your dedicated website agent. I'm here to build and manage a world-class website for ${client?.business_name || 'your business'}.\n\nBefore I can build your site, I need to gather some essential information — you'll see a checklist above that fills in as we go. Once all 9 items are collected, you can click the green Build My Site button whenever you're ready.\n\nYou can also keep chatting with me after that to add more details (testimonials, colors, photos) to make the site even better.\n\nLet's start: what's the exact name of your business as you'd like it to appear on your website?`,
     social: `Hey ${name}! I'm your social media agent. I'll be managing your Facebook and Instagram to build your brand, engage your community, and bring in new customers.\n\nI create all the content, schedule everything, and handle engagement — you don't have to touch a thing.\n\nLet's get started. Do you currently have a Facebook page or Instagram account for ${client?.business_name || 'your business'}?`,
-    gbp: `Hi ${name}! I'm your Google Business Profile agent. I'll build and optimize your GBP listing so you show up when people in ${client?.location || 'your area'} search for ${client?.industry || 'your services'}.\n\nA fully optimized GBP is one of the highest ROI moves for a local business — it directly drives calls, website visits, and direction requests.\n\nDo you currently have a Google Business Profile set up for ${client?.business_name || 'your business'}?`,
-    ads: `Hi ${name}! I'm your ads agent. I'll be running your Google and Meta advertising campaigns to bring in qualified leads for ${client?.business_name || 'your business'}.\n\nI handle everything — campaign setup, ad copy, targeting, optimization, and weekly reporting. Every dollar works as hard as possible.\n\nTo get started: what's your monthly advertising budget? Even $300–500/month produces strong results in a local market.`
+    gbp: `Hi ${name}! I'm your Google Business Profile agent. I'll build and optimize your GBP listing so you show up when people in ${client?.location || 'your area'} search for ${client?.industry || 'your services'}.\n\nDo you currently have a Google Business Profile set up for ${client?.business_name || 'your business'}?`,
+    ads: `Hi ${name}! I'm your ads agent. I'll be running your Google and Meta advertising campaigns to bring in qualified leads for ${client?.business_name || 'your business'}.\n\nTo get started: what's your monthly advertising budget?`
   };
   return greetings[agentId] || `Hi! I'm your ${agentId} agent. How can I help you today?`;
 }
