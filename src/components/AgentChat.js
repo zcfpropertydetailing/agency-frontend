@@ -93,32 +93,40 @@ export default function AgentChat({ agent, token, client }) {
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     const names = fileList.map(f => f.name).join(', ');
-    
-    // Notify user files are received
-    setMessages(prev => [...prev, {
-      role: 'user',
-      content: `[Uploaded ${fileList.length} file(s): ${names}]`
-    }]);
     setLoading(true);
+    setMessages(prev => [...prev, { role: 'user', content: `[Uploaded: ${names}]` }]);
 
     try {
-      // Send file notification to agent
+      // Upload files to backend
+      const formData = new FormData();
+      fileList.forEach(f => formData.append('files', f));
+      formData.append('agentType', agent.id);
+
+      const uploadRes = await fetch(`${API}/api/agents/upload`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData
+      });
+      const uploadData = await uploadRes.json();
+      const uploadedUrls = uploadData.urls || [];
+
+      const uploadMsg = uploadedUrls.length > 0
+        ? `I uploaded ${fileList.length} image(s): ${names}. Image URLs: ${uploadedUrls.join(', ')}`
+        : `I uploaded ${fileList.length} file(s): ${names}. Please include these on my website.`;
+
       const res = await fetch(`${API}/api/agents/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          agentType: agent.id,
-          message: `I've uploaded ${fileList.length} file(s): ${names}. Please acknowledge and tell me how these will be used on my website.`
-        })
+        body: JSON.stringify({ agentType: agent.id, message: uploadMsg })
       });
       const data = await res.json();
       if (data.reply) {
-        const cleanReply = data.reply.replace(/\[COLLECTED:\w+\]/g, '').replace(/\[STATUS:\{[^}]+\}\]/g, '').trim();
+        const cleanReply = data.reply.replace(/\[STATUS:\{[^}]+\}\]/g, '').trim();
         setMessages(prev => [...prev, { role: 'assistant', content: cleanReply }]);
-        if (agent.id === 'website') fetchCollected();
+        if (data.collected) setCollectedFields(data.collected);
       }
     } catch (e) {
-      setMessages(prev => [...prev, { role: "assistant", content: "Files received! I'll incorporate them into your website." }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Files received! I will incorporate them into your website.' }]);
     }
     setLoading(false);
   };
